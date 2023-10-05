@@ -26,7 +26,7 @@
 	</style>
 </head>
 <body>
-	<input type="file">
+	<input type="file" accept="image/*,video/*">
 	<br><br>
 	<canvas></canvas>
 
@@ -224,12 +224,20 @@
 			});
 
 			document.querySelector('input').oninput = e => { console.log(e.target.files)
-				var img = document.createElement('img');
-				img.onload = e => {
-					objects[objects.length - 1] = canvas.media(img, {
+				var media;
+				if (e.target.files[0].type.startsWith('video')) {
+					media = document.createElement('video');
+					media.autoplay = true;
+					media.playsinline = true;
+				} else {
+					media = document.createElement('img');
+				}
+
+				media.onloadedmetadata = e => {
+					objects[objects.length - 1] = canvas.media(media, {
 						x: 50,
 						y: 50,
-						width: 200,
+						// width: 200,
 						height: 200
 					}, {
 						// lineWidth: 5,
@@ -241,7 +249,7 @@
 
 				var fr = new FileReader();
 				fr.onload = function () {
-					img.src = fr.result;
+					media.src = fr.result;
 				}
 				fr.readAsDataURL(e.target.files[0]);
 			}
