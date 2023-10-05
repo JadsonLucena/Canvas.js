@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Canvas.js</title>
+	
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+
+			-webkit-box-sizing: border-box;
+			-moz-box-sizing: border-box;
+			box-sizing: border-box;
+		}
+		html, body {
+			position: relative;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+		}
+		canvas {
+			border: 1px dashed #000;
+		}
+	</style>
+</head>
+<body>
+	<input type="file">
+	<br><br>
+	<canvas></canvas>
+
+	<script src="https://cdn.jsdelivr.net/gh/JadsonLucena/Canvas.js/src/Canvas.js"></script>
+	<script>
+		alert('1 - Line (Default)\n2 - Rectangle\n3 - Circle\n4 - Eraser\nUndo - Ctrl + z\nRedo - Ctrl + Shift  + z');
+
+		var canvasElement = document.querySelector('canvas');
+		canvasElement.width = window.innerWidth;
+		canvasElement.height = window.innerHeight;
+		var rect = canvasElement.getBoundingClientRect();
+
+		// canvasElement.width = Math.min(800, window.innerWidth - 120);
+		// canvasElement.height = Math.round(canvasElement.width * 0.3125);
+
+		// window.onresize = e => {
+		// 	canvasElement.width = Math.min(800, window.innerWidth - 120);
+		// 	canvasElement.height = Math.round(canvasElement.width * 0.3125);
+		// };
+
+		var number = 1;
+		var canvas = new Canvas(canvasElement);
+		var objects = [undefined];
+
+		(async () => {
+			// var stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {
+			// 	width: {
+			// 		exact: 1024
+			// 	},
+			// 	height: {
+			// 		exact: 720
+			// 	}
+			// }});
+			// var video = document.createElement('video');
+			// video.style.objectFit = `cover`;
+			// video.srcObject = stream;
+			// video.oncanplay = () => video.play();
+			// video.onplay = () => {
+			// 	objects[objects.length - 1] = canvas.media(video, {
+			// 		x: 0,
+			// 		y: 0,
+			// 		width: canvasElement.width,
+			// 		height: canvasElement.height
+			// 	});
+			// 	console.log(objects);
+			// 	objects.push(undefined);
+			// };
+			// console.log(video);
+
+			if ('ontouchstart' in window || navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0) {
+				canvasElement.ontouchstart = e => {
+					if (number == 1) {
+						objects[objects.length - 1] = canvas.line({
+							x: e.touches[0].clientX - rect.left,
+							y: e.touches[0].clientY - rect.top
+						});
+					} else if (number == 2) {
+						objects[objects.length - 1] = canvas.rectangle({
+							x: e.touches[0].clientX - rect.left,
+							y: e.touches[0].clientY - rect.top
+						});
+					} else if (number == 3) {
+						objects[objects.length - 1] = canvas.ellipse({
+							x: e.touches[0].clientX - rect.left,
+							y: e.touches[0].clientY - rect.top
+						});
+					} else if (number == 4) {
+						objects[objects.length - 1] = canvas.eraser({
+							x: e.touches[0].clientX - rect.left,
+							y: e.touches[0].clientY - rect.top
+						});
+					} else if (number == 5) {
+						// objects[objects.length - 1] = canvas.text('', {
+						// 	x: e.touches[0].clientX - rect.left,
+						// 	y: e.touches[0].clientY - rect.top
+						// });
+					}
+				};
+				canvasElement.ontouchmove = e => {
+					if (objects.at(-1)) {
+						if (number == 1) {
+							objects.at(-1).point(e.changedTouches[0].clientX - rect.left, e.changedTouches[0].clientY - rect.top);
+						} else if (number == 2) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.changedTouches[0].clientX - rect.left) - object.position.x, (e.changedTouches[0].clientY - rect.top) - object.position.y);
+						} else if (number == 3) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.changedTouches[0].clientX - rect.left) - object.position.x, (e.changedTouches[0].clientY - rect.top) - object.position.y);
+						} else if (number == 4) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).point(e.changedTouches[0].clientX - rect.left, e.changedTouches[0].clientY - rect.top);
+						} else if (number == 5) {
+							// var object = canvas.find(objects.at(-1).key);
+							// objects.at(-1).write();
+						}
+					}
+				};
+				canvasElement.ontouchend = canvasElement.ontouchcancel = e => {
+					if (objects.at(-1)) {
+						if (number == 1) {
+							objects.at(-1).point(e.changedTouches[0].clientX - rect.left, e.changedTouches[0].clientY - rect.top);
+						} else if (number == 2) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.changedTouches[0].clientX - rect.left) - object.position.x, (e.changedTouches[0].clientY - rect.top) - object.position.y);
+						} else if (number == 3) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.changedTouches[0].clientX - rect.left) - object.position.x, (e.changedTouches[0].clientY - rect.top) - object.position.y);
+						} else if (number == 4) {
+							objects.at(-1).point(e.changedTouches[0].clientX - rect.left, e.changedTouches[0].clientY - rect.top);
+						} else if (number == 5) {
+							// var object = canvas.find(objects.at(-1).key);
+							// objects.at(-1).write();
+						}
+						objects.push(undefined);
+					}
+				};
+			} else {
+				canvasElement.onpointerdown = e => {
+					if (number == 1) {
+						objects[objects.length - 1] = canvas.line({
+							x: e.clientX - rect.left,
+							y: e.clientY - rect.top
+						});
+					} else if (number == 2) {
+						objects[objects.length - 1] = canvas.rectangle({
+							x: e.clientX - rect.left,
+							y: e.clientY - rect.top
+						});
+					} else if (number == 3) {
+						objects[objects.length - 1] = canvas.ellipse({
+							x: e.clientX - rect.left,
+							y: e.clientY - rect.top
+						});
+					} else if (number == 4) {
+						objects[objects.length - 1] = canvas.eraser({
+							x: e.clientX - rect.left,
+							y: e.clientY - rect.top
+						});
+					} else if (number == 5) {
+						// objects[objects.length - 1] = canvas.text('', {
+						// 	x: e.clientX - rect.left,
+						// 	y: e.clientY - rect.top
+						// });
+					}
+					// console.log(objects);
+				};
+				canvasElement.onpointermove = e => {
+					if (objects.at(-1)) {
+						if (number == 1) {
+							objects.at(-1).point(e.clientX - rect.left, e.clientY - rect.top);
+						} else if (number == 2) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.clientX - rect.left) - object.position.x, (e.clientY - rect.top) - object.position.y);
+						} else if (number == 3) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.clientX - rect.left) - object.position.x, (e.clientY - rect.top) - object.position.y);
+						} else if (number == 4) {
+							objects.at(-1).point(e.clientX - rect.left, e.clientY - rect.top);
+						} else if (number == 5) {
+						}
+					}
+				};
+				canvasElement.onpointerup = canvasElement.onpointerout = e => {
+					if (objects.at(-1)) {
+						if (number == 1) {
+							objects.at(-1).point(e.clientX - rect.left, e.clientY - rect.top);
+						} else if (number == 2) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.clientX - rect.left) - object.position.x, (e.clientY - rect.top) - object.position.y);
+						} else if (number == 3) {
+							var object = canvas.find(objects.at(-1).key);
+							objects.at(-1).reSize((e.clientX - rect.left) - object.position.x, (e.clientY - rect.top) - object.position.y);
+						} else if (number == 4) {
+							objects.at(-1).point(e.clientX - rect.left, e.clientY - rect.top);
+						} else if (number == 5) {
+						}
+						objects.push(undefined);
+					}
+				};
+			}
+			
+
+			window.addEventListener('keydown', e => {
+				if (parseInt(e.key) >= 1 && parseInt(e.key) <= 9) {
+					number = e.key;
+				} else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() == 'z') {
+					canvas.redo();
+					// canvas.clean();
+					// canvas.render();
+				} else if (e.ctrlKey && e.key.toLowerCase() == 'z') {
+					canvas.undo();
+					// canvas.clean();
+					// canvas.render();
+				}
+			});
+
+			document.querySelector('input').oninput = e => { console.log(e.target.files)
+				var img = document.createElement('img');
+				img.onload = e => {
+					objects[objects.length - 1] = canvas.media(img, {
+						x: 50,
+						y: 50,
+						width: 200,
+						height: 200
+					}, {
+						// lineWidth: 5,
+						// radii: 100
+					});
+					console.log(objects);
+					objects.push(undefined);
+				};
+
+				var fr = new FileReader();
+				fr.onload = function () {
+					img.src = fr.result;
+				}
+				fr.readAsDataURL(e.target.files[0]);
+			}
+		})();
+	</script>
+</body>
+</html>
