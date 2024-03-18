@@ -233,7 +233,7 @@
 					media = document.createElement('img');
 				}
 
-				media.onloadedmetadata = e => {
+				media.onload = e => {
 					objects[objects.length - 1] = canvas.media(media, {
 						x: 50,
 						y: 50,

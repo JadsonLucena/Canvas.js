@@ -1762,6 +1762,7 @@ class Canvas {
 		var width, height;
 
 		if (
+			media instanceof HTMLCanvasElement ||
 			media instanceof OffscreenCanvas ||
 			media instanceof ImageBitmap
 		) {
@@ -1770,17 +1771,17 @@ class Canvas {
 		} else if (media instanceof VideoFrame) {
 			width = media.displayWidth;
 			height = media.displayHeight;
-		} else if (media instanceof HTMLElement) {
-			if (media.tagName == 'IMG') {
-				width = media.naturalWidth;
-				height = media.naturalHeight;
-			} else if (media.tagName == 'VIDEO') {
-				width = media.videoWidth;
-				height = media.videoHeight;
-			} else if (media.tagName == 'CANVAS') {
-				width = media.width;
-				height = media.height;
-			}
+		} else if (media instanceof SVGImageElement) {
+			width = media.width.baseVal.value;
+			height = media.height.baseVal.value;
+		} else if (media instanceof HTMLImageElement) {
+			width = media.naturalWidth;
+			height = media.naturalHeight;
+		} else if (media instanceof HTMLVideoElement) {
+			width = media.videoWidth;
+			height = media.videoHeight;
+		} else {
+			throw new Error('Invalid media type');
 		}
 
 		return { width, height };
