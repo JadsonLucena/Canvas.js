@@ -146,7 +146,7 @@ class Canvas {
 		shadowOffsetX = 0,
 		shadowOffsetY = 0,
 		globalCompositeOperation = 'source-over',
-		BSplineIterations = 2
+		SplineSegmentSize = 2
 	} = {}) {
 		this.#undone = [];
 
@@ -179,7 +179,8 @@ class Canvas {
 			shadowBlur,
 			shadowOffsetX,
 			shadowOffsetY,
-			globalCompositeOperation
+			globalCompositeOperation,
+			SplineSegmentSize
 		};
 
 		var path = new Path2D();
@@ -197,35 +198,51 @@ class Canvas {
 
 		return {
 			key,
-			point: async (x, y, minDistance = 1) => {
+			point: async (x, y, SplineSegmentSize = settings.SplineSegmentSize) => {
 				var point = {
 					x,
 					y
 				};
-	
-				if (this.#euclideanDistance(this.#objects[key].lastPoints.at(-1), point) > minDistance) {
+
+				if (SplineSegmentSize < 1) {
+					SplineSegmentSize = 1;
+				}
+
+				if (this.#euclideanDistance(this.#objects[key].lastPoints.at(-1), point) >= SplineSegmentSize) {
 					this.#objects[key].AABB = this.#updateAABB(this.#objects[key].AABB, point);
 
-					if (this.#objects[key].lastPoints.length % 2 == 0) {
-						var lastPoints = this.#objects[key].lastPoints.splice(0, 2).concat(point)
-						this.#objects[key].lastPoints.unshift(point);
+					this.#objects[key].lastPoints.push(point);
+
+					var size = this.#objects[key].lastPoints.length;
+
+					if (size >= 4) {
+						var points = {
+							P0: this.#objects[key].lastPoints[size - 4],
+							P1: this.#objects[key].lastPoints[size - 3],
+							P2: this.#objects[key].lastPoints[size - 2],
+							P3: this.#objects[key].lastPoints[size - 1]
+						};
+
+						var iterations = Math.ceil(this.#euclideanDistance(points.P1, points.P2) / SplineSegmentSize);
+						var increment = 1 / iterations;
 
 						var path = new Path2D();
-						path.moveTo(lastPoints[0].x, lastPoints[0].y);
 
-						this.#BSpline(lastPoints, BSplineIterations).forEach((point, i) => {
-							path.lineTo(point.x, point.y);
+						for (let i = 0; i <= iterations; i++) {
+							var point = this.#catmullRomSpline(points, i * increment);
+
 							this.#objects[key].path.lineTo(point.x, point.y);
-						});
 
-						path.lineTo(point.x, point.y);
-						this.#objects[key].path.lineTo(point.x, point.y);
+							if (i == 0) {
+								path.moveTo(point.x, point.y);
+							} else {
+								path.lineTo(point.x, point.y);
+							}
+						}
 
 						this.#drawLine(key, path);
 
 						this.#requestFrame();
-					} else {
-						this.#objects[key].lastPoints.push(point);
 					}
 				}
 			},
@@ -277,7 +294,7 @@ class Canvas {
 				shadowOffsetX = this.#objects[key].settings.shadowOffsetX,
 				shadowOffsetY = this.#objects[key].settings.shadowOffsetY,
 				globalCompositeOperation = this.#objects[key].settings.globalCompositeOperation,
-				BSplineIterations = this.#objects[key].settings.globalCompositeOperation,
+				SplineSegmentSize = this.#objects[key].settings.SplineSegmentSize
 			}	= {}) => {
 				this.#reRender([key], () => {
 					this.#objects[key].settings = {
@@ -297,7 +314,7 @@ class Canvas {
 						shadowOffsetX,
 						shadowOffsetY,
 						globalCompositeOperation,
-						BSplineIterations
+						SplineSegmentSize
 					};
 				});
 			}
@@ -1705,26 +1722,41 @@ class Canvas {
 		)
 	}
 
-	#BSpline(arr, iterations = 2) {
-		if (iterations == 0) return arr;
+	#catmullRomSpline({P0, P1, P2, P3}, t, alpha = 0.5) {
+		const getT = (P0, P1, t, alpha) => Math.pow(Math.sqrt(Math.pow(P1.x - P0.x, 2) + Math.pow(P1.y - P0.y, 2)), alpha) + t;
 
-		var smooth = [];
+		let t0 = 0;
+		let t1 = getT(P0, P1, t0, alpha);
+		let t2 = getT(P1, P2, t1, alpha);
+		let t3 = getT(P2, P3, t2, alpha);
+		t = (t2 - t1) * t + t1;
 
-		var size = arr.length;
-		for (var i = 0; i < size - 1; i++) {
-				smooth.push(
-					{
-						x: 0.75 * arr[i].x + 0.25 * arr[i + 1].x,
-						y: 0.75 * arr[i].y + 0.25 * arr[i + 1].y
-					},
-					{
-						x: 0.25 * arr[i].x + 0.75 * arr[i + 1].x,
-						y: 0.25 * arr[i].y + 0.75 * arr[i + 1].y
-					}
-				);
+		let A1 = {
+			x: (t1 - t) / (t1 - t0) * P0.x + (t - t0) / (t1 - t0) * P1.x,
+			y: (t1 - t) / (t1 - t0) * P0.y + (t - t0) / (t1 - t0) * P1.y
+		}
+		let A2 = {
+			x: (t2 - t) / (t2 - t1) * P1.x + (t - t1) / (t2 - t1) * P2.x,
+			y: (t2 - t) / (t2 - t1) * P1.y + (t - t1) / (t2 - t1) * P2.y
+		}
+		let A3 = {
+			x: (t3 - t) / (t3 - t2) * P2.x + (t - t2) / (t3 - t2) * P3.x,
+			y: (t3 - t) / (t3 - t2) * P2.y + (t - t2) / (t3 - t2) * P3.y
 		}
 
-		return iterations == 1 ? smooth : this.#BSpline(smooth, iterations - 1);
+		let B1 = {
+			x: (t2 - t) / (t2 - t0) * A1.x + (t - t0) / (t2 - t0) * A2.x,
+			y: (t2 - t) / (t2 - t0) * A1.y + (t - t0) / (t2 - t0) * A2.y
+		};
+		let B2 = {
+			x: (t3 - t) / (t3 - t1) * A2.x + (t - t1) / (t3 - t1) * A3.x,
+			y: (t3 - t) / (t3 - t1) * A2.y + (t - t1) / (t3 - t1) * A3.y
+		};
+
+		return {
+			x: (t2 - t) / (t2 - t1) * B1.x + (t - t1) / (t2 - t1) * B2.x,
+			y: (t2 - t) / (t2 - t1) * B1.y + (t - t1) / (t2 - t1) * B2.y
+		};
 	}
 
 	#euclideanDistance(point1, point2) {
