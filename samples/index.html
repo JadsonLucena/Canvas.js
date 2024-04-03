@@ -233,7 +233,7 @@
 					media = document.createElement('img');
 				}
 
-				media.onload = e => {
+				media.addEventListener(e.target.files[0].type.startsWith('video') ? 'loadedmetadata' : 'load', e => {
 					objects[objects.length - 1] = canvas.media(media, {
 						x: 50,
 						y: 50,
@@ -245,7 +245,7 @@
 					});
 					console.log(objects);
 					objects.push(undefined);
-				};
+				});
 
 				var fr = new FileReader();
 				fr.onload = function () {
