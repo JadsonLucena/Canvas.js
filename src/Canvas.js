@@ -1637,7 +1637,7 @@ class Canvas {
 		this.#reRender(keys);
 
 		var delay = Date.now() - startTime;
-		this.#animate.loop = setTimeout(() => this.#loop(++i), Math.max(0, parseInt((1000 / this.#animate.interval) - delay)));
+		this.#animate.loop = setTimeout(() => this.#loop(++i % Number.MAX_SAFE_INTEGER), Math.max(0, parseInt((1000 / this.#animate.interval) - delay)));
 	}
 
 	#requestFrame() {
