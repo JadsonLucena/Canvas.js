@@ -8,7 +8,7 @@ class Canvas {
 	#undone = {}
 	#animate = {
 		loop: undefined,
-		intervals: undefined
+		durations: []
 	}
 
 	constructor(canvas, {
@@ -671,7 +671,7 @@ class Canvas {
 		}
 	}
 
-	media(media, {
+	async media(media, {
 		x,
 		y,
 		width,
@@ -770,12 +770,70 @@ class Canvas {
 			transformation: {}
 		};
 
-		var videoTracks = [];
 		if ('captureStream' in media) {
-			videoTracks = media.captureStream()?.getVideoTracks();
+			var videoTracks = media.captureStream()?.getVideoTracks();
 			videoTracks.forEach(track => track.contentHint = contentHint);
-			this.#objects[key].FPS = videoTracks.map(track => track.getSettings()?.frameRate)
-		}
+			this.#objects[key].FPS = [...new Set(videoTracks.map(track => track.getSettings()?.frameRate))];
+		} else if (
+			media instanceof HTMLImageElement ||
+			media instanceof SVGImageElement
+		) {
+			var res = await fetch(media.src)
+			// var mediaType = res.then(response => response.blob()).then(blob => blob.type);
+			var mediaType = res.headers.get('content-type');
+
+			if (
+				mediaType.toLowerCase() == 'image/gif' &&
+				'ImageDecoder' in window
+			) {
+				var imageDecoder = new ImageDecoder({
+					data: res.body,
+					type: 'image/gif'
+				});
+
+				await Promise.all([imageDecoder.completed, imageDecoder.tracks.ready])
+
+				var tracks = Object.values(imageDecoder.tracks).filter(track => track.animated)
+
+				var images = await Promise.all(tracks.map(track => Promise.all([...Array(track.frameCount).keys()].map(async frameIndex => imageDecoder.decode({
+					frameIndex,
+					completeFramesOnly: true
+				})))));
+
+				this.#objects[key].FPS = [...new Set(tracks.map((track, i) => 1000 * track.frameCount / images[i].reduce((acc, cur) => acc + cur.image.duration / 1000, 0)))];
+
+				var loop = async (frameIndex = 0, repetitionCount = 0) => {
+					var startTime = performance.now();
+					var image = images[imageDecoder.tracks.selectedIndex][frameIndex].image;
+
+					if (repetitionCount > imageDecoder.tracks.selectedTrack.repetitionCount) {
+						delete this.#objects[key].FPS;
+						imageDecoder.close();
+						return this.#reLoop();
+					} else if (key in this.#objects) {
+						this.#objects[key].media = image;
+
+						if (frameIndex == imageDecoder.tracks.selectedTrack.frameCount - 1) {
+							repetitionCount++;
+						}
+
+						frameIndex++;
+					} else if (!(key in this.#undone)) {
+						return imageDecoder.close();
+					}
+
+					var delay = performance.now() - startTime;
+					setTimeout(() => loop(
+						frameIndex % imageDecoder.tracks.selectedTrack.frameCount,
+						repetitionCount % Number.MAX_SAFE_INTEGER
+					), Math.max(0, Math.round((image.duration / 1000) - delay)));
+				};
+
+				if (this.#objects[key].FPS.length) {
+					loop();
+				}
+			}
+		} 
 
 		if ('requestVideoFrameCallback' in media) {
 			media.requestVideoFrameCallback(() => {
@@ -783,9 +841,7 @@ class Canvas {
 			});
 		}
 
-		this.#drawMedia(key);
 		this.#reLoop();
-		this.#requestFrame();
 
 		return {
 			key,
@@ -1604,24 +1660,24 @@ class Canvas {
 			.reduce((acc, object) => acc.concat(object.FPS), []))];
 
 		if (FPS.length == 0) {
-			return this.#animate.intervals = undefined;
+			return this.#animate.durations = [];
 		}
 
-		var intervals = FPS.map(fps => Math.round(1000 / fps)).sort();
+		var durations = FPS.map(fps => Math.round(1000 / fps)).sort();
 
-		var gcd = this.#GCD(...intervals);
+		var gcd = this.#GCD(...durations);
 
-		this.#animate.intervals = gcd == 1 ? intervals : [gcd];
+		this.#animate.durations = gcd == 1 ? durations : [gcd];
 
 		if (!this.#animate.loop) {
 			this.#loop();
 		}
 	}
 
-	#loop(i = 1) {
+	#loop(i = 0) {
 		var startTime = performance.now();
 
-		if (!this.#animate.intervals.length) {
+		if (!this.#animate.durations.length) {
 			return this.#animate.loop = undefined;
 		}
 
@@ -1629,7 +1685,7 @@ class Canvas {
 			if (
 				this.#objects[key].type == 'media' &&
 				'FPS' in this.#objects[key] &&
-				this.#objects[key].FPS.some(fps => this.#animate.intervals.some(interval => interval * i % Math.round(1000 / fps) == 0))
+				this.#objects[key].FPS.some(fps => this.#animate.durations.some(duration => duration * i % Math.round(1000 / fps) == 0))
 			) {
 				return true;
 			}
@@ -1639,8 +1695,11 @@ class Canvas {
 
 		this.#reRender(keys);
 
+		var index = i % this.#animate.durations.length;
+		var duration = this.#animate.durations[index] - (this.#animate.durations[index - 1] ?? 0)
+
 		var delay = performance.now() - startTime;
-		this.#animate.loop = this.#animate.intervals.map(interval => setTimeout(() => this.#loop(++i % Number.MAX_SAFE_INTEGER), Math.max(0, Math.round(interval - delay))));
+		this.#animate.loop = setTimeout(() => this.#loop(++i % Number.MAX_SAFE_INTEGER), Math.max(0, Math.round(duration - delay)));
 	}
 
 	#requestFrame() {
@@ -1787,7 +1846,7 @@ class Canvas {
 
 		var res = numbers[0];
 		for (var i = 1; i < numbers.length; i++) {
-			res = gcd(res, numbers[i]);
+			res = gcd(Math.round(res), Math.round(numbers[i]));
 		}
 
 		return res;
@@ -1803,7 +1862,7 @@ class Canvas {
 		) {
 			width = media.width;
 			height = media.height;
-		} else if (media instanceof VideoFrame) {
+		} else if ('VideoFrame' in window && media instanceof VideoFrame) {
 			width = media.displayWidth;
 			height = media.displayHeight;
 		} else if (media instanceof SVGImageElement) {
