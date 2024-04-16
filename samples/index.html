@@ -51,6 +51,8 @@
 		var canvas = new Canvas(canvasElement);
 		var objects = [undefined];
 
+		console.log('Canvas', canvas);
+
 		(async () => {
 			// var stream = await navigator.mediaDevices.getUserMedia({audio: false, video: {
 			// 	width: {
@@ -233,8 +235,8 @@
 					media = document.createElement('img');
 				}
 
-				media.addEventListener(e.target.files[0].type.startsWith('video') ? 'loadedmetadata' : 'load', e => {
-					objects[objects.length - 1] = canvas.media(media, {
+				media.addEventListener(e.target.files[0].type.startsWith('video') ? 'loadedmetadata' : 'load', async () => {
+					objects[objects.length - 1] = await canvas.media(media, {
 						x: 50,
 						y: 50,
 						// width: 200,
