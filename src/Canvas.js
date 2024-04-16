@@ -8,7 +8,7 @@ class Canvas {
 	#undone = {}
 	#animate = {
 		loop: undefined,
-		interval: undefined
+		intervals: undefined
 	}
 
 	constructor(canvas, {
@@ -774,7 +774,7 @@ class Canvas {
 		if ('captureStream' in media) {
 			videoTracks = media.captureStream()?.getVideoTracks();
 			videoTracks.forEach(track => track.contentHint = contentHint);
-			this.#objects[key].FPS = videoTracks.map(track => Math.round(track.getSettings()?.frameRate))
+			this.#objects[key].FPS = videoTracks.map(track => track.getSettings()?.frameRate)
 		}
 
 		if ('requestVideoFrameCallback' in media) {
@@ -1599,15 +1599,19 @@ class Canvas {
 	}
 
 	#reLoop() {
-		var FPS = Object.values(this.#objects)
+		var FPS = [...new Set(Object.values(this.#objects)
 			.filter(object => object.type == 'media' && 'FPS' in object)
-			.reduce((acc, object) => acc.concat(object.FPS), []);
+			.reduce((acc, object) => acc.concat(object.FPS), []))];
 
 		if (FPS.length == 0) {
-			return this.#animate.interval = undefined;
+			return this.#animate.intervals = undefined;
 		}
 
-		this.#animate.interval = this.#GCD(...FPS);
+		var intervals = FPS.map(fps => Math.round(1000 / fps)).sort();
+
+		var gcd = this.#GCD(...intervals);
+
+		this.#animate.intervals = gcd == 1 ? intervals : [gcd];
 
 		if (!this.#animate.loop) {
 			this.#loop();
@@ -1615,18 +1619,17 @@ class Canvas {
 	}
 
 	#loop(i = 1) {
-		if (!this.#animate.interval || this.#animate.interval < 1) {
+		var startTime = performance.now();
+
+		if (!this.#animate.intervals.length) {
 			return this.#animate.loop = undefined;
 		}
-	
-		var startTime = Date.now();
 
-		// If there was a specific array for averages, it would be faster
 		var keys = Object.keys(this.#objects).filter(key => {
 			if (
 				this.#objects[key].type == 'media' &&
 				'FPS' in this.#objects[key] &&
-				this.#objects[key].FPS.some(fps => this.#animate.interval * i % fps == 0)
+				this.#objects[key].FPS.some(fps => this.#animate.intervals.some(interval => interval * i % Math.round(1000 / fps) == 0))
 			) {
 				return true;
 			}
@@ -1636,8 +1639,8 @@ class Canvas {
 
 		this.#reRender(keys);
 
-		var delay = Date.now() - startTime;
-		this.#animate.loop = setTimeout(() => this.#loop(++i % Number.MAX_SAFE_INTEGER), Math.max(0, parseInt((1000 / this.#animate.interval) - delay)));
+		var delay = performance.now() - startTime;
+		this.#animate.loop = this.#animate.intervals.map(interval => setTimeout(() => this.#loop(++i % Number.MAX_SAFE_INTEGER), Math.max(0, Math.round(interval - delay))));
 	}
 
 	#requestFrame() {
