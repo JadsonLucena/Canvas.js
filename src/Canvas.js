@@ -1,3 +1,9 @@
+customElements.define('custom-canvas', class extends HTMLElement {
+	constructor() {
+		super();
+	}
+});
+
 class Canvas {
 	#canvas
 	#ctx
@@ -6,10 +12,14 @@ class Canvas {
 
 	#objects = {}
 	#undone = {}
+
 	#animate = {
 		loop: undefined,
-		durations: []
+		durations: [],
+		windowFPS: 30
 	}
+
+	#shadowRoot
 
 	constructor(canvas, {
 		alpha = true,
@@ -32,6 +42,27 @@ class Canvas {
 		this.#ctx.imageSmoothingQuality = imageSmoothingQuality;
 
 		this.#contentHint = contentHint;
+
+		var startTime = performance.now();
+		var frameCount = 0;
+		var countFrames = () => {
+			frameCount++;
+
+			var elapsedTime = performance.now() - startTime;
+			if (elapsedTime < 1000) {
+				requestAnimationFrame(countFrames);
+			} else {
+  			this.#animate.windowFPS = parseInt(frameCount / 10) * 10;
+			}
+		}
+		requestAnimationFrame(countFrames);
+
+		var shadowDOM = document.createElement('custom-canvas');
+		shadowDOM.style = 'position: fixed; left: 0; top: 0; width: 0; height: 0; opacity: 0; user-select: none; pointer-events: none; z-index: -1;';
+		this.#shadowRoot = shadowDOM.attachShadow({
+			mode: 'open'
+		});
+		document.body.appendChild(shadowDOM);
 
 		// new ResizeObserver(() => {
 		// 	this.clean();
@@ -802,7 +833,7 @@ class Canvas {
 
 				this.#objects[key].FPS = [...new Set(tracks.map((track, i) => 1000 * track.frameCount / images[i].reduce((acc, cur) => acc + cur.image.duration / 1000, 0)))];
 
-				var loop = async (frameIndex = 0, repetitionCount = 0) => {
+				var loop = async (frameIndex = 0, repetitionCount = 1) => {
 					var startTime = performance.now();
 					var image = images[imageDecoder.tracks.selectedIndex][frameIndex].image;
 
@@ -831,6 +862,28 @@ class Canvas {
 
 				if (this.#objects[key].FPS.length) {
 					loop();
+				}
+			} else if (mediaType.toLowerCase() == 'image/svg+xml') {
+				var svg = await res.text();
+
+				var SVGAnimateProperties = this.#SVGAnimateProperties(svg);
+
+				if (SVGAnimateProperties) {
+					this.#shadowRoot.appendChild(media);
+
+					this.#objects[key].FPS = [this.#animate.windowFPS];
+
+					if (SVGAnimateProperties.iterations != Infinity) {
+						setTimeout(() => {
+							if (key in this.#objects) {
+								delete this.#objects[key].FPS;
+								this.#reLoop();
+							} else if (key in this.#undone) {
+								delete this.#undone[key].FPS;						
+								this.#reLoop();
+							}
+						}, SVGAnimateProperties.duration * SVGAnimateProperties.iterations);
+					}
 				}
 			}
 		} 
@@ -1880,4 +1933,242 @@ class Canvas {
 
 		return { width, height };
 	};
+
+	#SVGAnimateProperties(svg) {
+		var animations = [];
+
+		var durationToMilliseconds = duration => {
+			var [value, unit] = duration.match(/(-?\d+(?:\.?\d+)?)([a-z]+)?/i).slice(1);
+			var milliseconds = 0;
+
+			switch (unit) {
+				case '%':
+					milliseconds = 1000 * (value / 100);
+				break;
+				case 'ms':
+					milliseconds = value;
+				break;
+				case 's':
+					milliseconds = value * 1000;
+				break;
+				default:
+					milliseconds = value * 1000;
+				break;
+			}
+
+			return milliseconds;
+		};
+
+		var svgDocument = new DOMParser().parseFromString(svg, 'image/svg+xml');
+		var svgElement = svgDocument.documentElement;
+
+		var SVGAnimateElement = svgElement.querySelectorAll('animate');
+		var SVGAnimateTransformElement = svgElement.querySelectorAll('animateTransform');
+		var SVGAnimateMotionElement = svgElement.querySelectorAll('animateMotion');
+		var SVGSetElement = svgElement.querySelectorAll('set');
+
+		var SVGElement = [...SVGAnimateElement, ...SVGAnimateTransformElement, ...SVGAnimateMotionElement, ...SVGSetElement];
+
+		// https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute#animation_timing_attributes
+		if (SVGElement?.length) {
+			SVGElement.forEach(element => {
+				var begin = 0, delay = 0, duration = 0, max = 0, min = 0, iterations = 1;
+
+				if (element.attributes.begin?.value) {
+					var ms = durationToMilliseconds(element.attributes.begin?.value);
+
+					if (ms > begin) {
+						begin = ms
+					}
+				}
+				if (element.attributes.dur?.value) {
+					var ms = durationToMilliseconds(element.attributes.dur?.value);
+
+					if (ms > duration) {
+						duration = ms
+					}
+				}
+				if (element.attributes.min?.value) {
+					var ms = durationToMilliseconds(element.attributes.min?.value);
+
+					if (ms > min) {
+						min = ms
+					}
+				}
+
+				if (element.attributes.end?.value) {
+					var ms = durationToMilliseconds(element.attributes.end?.value);
+
+					if (ms > max) {
+						max = ms
+					}
+				}
+				if (element.attributes.max?.value) {
+					var ms = durationToMilliseconds(element.attributes.max?.value);
+
+					if (ms > max) {
+						max = ms
+					}
+				}
+				if (element.attributes.repeatDur?.value) {
+					var ms = durationToMilliseconds(element.attributes.repeatDur?.value);
+
+					if (ms > max) {
+						max = ms
+					}
+				}
+
+				if (element.attributes.restart?.value?.trim()?.toLowerCase() == 'never') {
+					iterations = 1;
+				} else {
+					iterations = Infinity;
+				}
+				if (
+					typeof element.attributes.repeatCount?.value == 'string' &&
+					element.attributes.repeatCount?.value?.trim()?.toLowerCase() == 'indefinite'
+				) {
+					iterations = Infinity;
+				} else if (
+					element.attributes.repeatCount?.value &&
+					+element.attributes.repeatCount?.value > iterations
+				) {
+					iterations = +element.attributes.repeatCount?.value;
+				}
+
+				animations.push({
+					begin,
+					delay,
+					duration,
+					max,
+					min,
+					iterations
+				});
+			});
+		}
+
+		var stylesheet = new CSSStyleSheet();
+		stylesheet.replaceSync(Array.from(svgElement.querySelectorAll('style')).map(style => style.textContent).join(' '));
+
+		var cssRules = Object.values(stylesheet.cssRules);
+		var nodes = Array.from(svgElement.childNodes);
+		var CSSRulesAnimation = [
+			...cssRules.filter(rule => rule.style?.getPropertyValue('animation')),
+			...nodes.filter(node => node.style?.getPropertyValue('animation-name'))
+		];
+		var CSSRulesTransition = [
+			...cssRules.filter(rule => rule.style?.getPropertyValue('transition')),
+			...nodes.filter(node => node.style?.getPropertyValue('transition'))
+		];
+
+		// https://developer.mozilla.org/en-US/docs/Web/CSS/animation
+		if (CSSRulesAnimation?.length) {
+			CSSRulesAnimation.forEach(animation => {
+				var begin = 0, delay = 0, duration = 0, max = 0, min = 0, iterations = 1;
+
+				if (animation.style.animationDelay) {
+					animation.style.animationDelay.split(',').map(animationDelay => durationToMilliseconds(animationDelay.trim())).forEach(animationDelay => {
+						if (animationDelay > delay) {
+							delay = animationDelay;
+						}
+					});
+				}
+				if (animation.style.animationDuration) {
+					animation.style.animationDuration.split(',').map(animationDuration => durationToMilliseconds(animationDuration.trim())).forEach(animationDuration => {
+						if (animationDuration > duration) {
+							duration = animationDuration;
+						}
+					});
+				}
+				if (animation.style.animationIterationCount) {
+					animation.style.animationIterationCount.split(',').map(i => i.trim()).forEach(animationIterationCount => {
+						if (
+							typeof animationIterationCount == 'string' &&
+							animationIterationCount.toLowerCase() == 'infinite'
+						) {
+							iterations = Infinity;
+						} else if (+animationIterationCount > iterations) {
+							iterations = animationIterationCount;
+						}
+					});
+				}
+
+				animations.push({
+					begin,
+					delay,
+					duration,
+					max,
+					min,
+					iterations
+				});
+			});
+		}
+
+		// https://developer.mozilla.org/en-US/docs/Web/CSS/transition
+		if (CSSRulesTransition?.length) {
+			CSSRulesTransition.forEach(transition => {
+				var begin = 0, delay = 0, duration = 0, max = 0, min = 0, iterations = 1;
+
+				if (transition.style.transitionDelay) {
+					transition.style.transitionDelay.split(',').map(transitionDelay => durationToMilliseconds(transitionDelay.trim())).forEach(transitionDelay => {
+						if (transitionDelay > delay) {
+							delay = transitionDelay;
+						}
+					});
+				}
+				if (transition.style.transitionDuration) {
+					transition.style.transitionDuration.split(',').map(transitionDuration => durationToMilliseconds(transitionDuration.trim())).forEach(transitionDuration => {
+						if (transitionDuration > duration) {
+							duration = transitionDuration;
+						}
+					});
+				}
+
+				animations.push({
+					begin,
+					delay,
+					duration,
+					max,
+					min,
+					iterations
+				});
+			});
+		}
+
+		if (animations.length) {
+			var duration = 0, iterations = 0;
+
+			animations.forEach(animation => {
+				var totalDuration = animation.begin + animation.delay + animation.duration;
+
+				if (
+					animation.min &&
+					totalDuration < animation.min
+				) {
+					totalDuration = animation.min;
+				}
+				if (
+					animation.max &&
+					totalDuration > animation.max
+				) {
+					totalDuration = animation.max;
+				}
+				if (totalDuration > duration) {
+					duration = totalDuration;
+				}
+
+				if (iterations < animation.iterations) {
+					iterations = animation.iterations;
+				}
+			});
+
+			if (duration && iterations) {
+				return {
+					duration,
+					iterations
+				};
+			}
+		}
+
+		return null;
+	}
 }
