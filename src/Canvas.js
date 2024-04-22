@@ -802,9 +802,64 @@ class Canvas {
 		};
 
 		if ('captureStream' in media) {
-			var videoTracks = media.captureStream()?.getVideoTracks();
-			videoTracks.forEach(track => track.contentHint = contentHint);
-			this.#objects[key].FPS = [...new Set(videoTracks.map(track => track.getSettings()?.frameRate))];
+			let getFPS = () => {
+				var stream = media.captureStream(0);
+				var videoTracks = stream?.getVideoTracks();
+
+				if (videoTracks) {
+					return [...new Set(videoTracks.filter(track => track.enabled && track.readyState == 'live').map(track => track.getSettings()?.frameRate).filter(rate => rate))];
+				}
+
+				return undefined;
+			};
+
+			if (
+				!(media instanceof HTMLVideoElement) ||
+				!media.paused
+			) {
+				var FPS = getFPS();
+
+				if (FPS.length) {
+					this.#objects[key].FPS = FPS;
+				}
+			}
+
+			if (media instanceof HTMLVideoElement) {
+				this.#shadowRoot.appendChild(media);
+
+				media.addEventListener('play', () => {
+					if (key in this.#objects) {
+						var FPS = getFPS();
+
+						if (FPS.length) {
+							if (key in this.#objects) {
+								this.#objects[key].FPS = FPS;
+								this.#reLoop();
+							} else if (key in this.#undone) {
+								this.#undone[key].FPS = FPS;
+							}
+						}
+					}
+				});
+
+				media.addEventListener('pause', () => {
+					if (key in this.#objects) {
+						delete this.#objects[key].FPS;
+						this.#reLoop();
+					} else if (key in this.#undone) {
+						delete this.#undone[key].FPS;
+					}
+				});
+
+				media.addEventListener('ended', () => {
+					if (key in this.#objects && !media.loop) {
+						delete this.#objects[key].FPS;
+						this.#reLoop();
+					} else if (key in this.#undone && !media.loop) {
+						delete this.#undone[key].FPS;
+					}
+				});
+			}
 		} else if (
 			media instanceof HTMLImageElement ||
 			media instanceof SVGImageElement
