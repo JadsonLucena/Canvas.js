@@ -1727,6 +1727,27 @@ class Canvas {
 		return iterations == 1 ? smooth : this.#BSpline(smooth, iterations - 1);
 	}
 
+	#catmullRomSpline(p0, p1, p2, p3, iterations = 2) {
+		var spline = [];
+		var gap = 1 / (iterations + 1);
+		for (var t = gap; t < 1; t += gap) { 
+			var t2 = t * t;
+			var t3 = t2 * t;
+			
+			var c0 = -0.5 * t3 + t2 - 0.5 * t;
+			var c1 = 1.5 * t3 - 2.5 * t2 + 1;
+			var c2 = -1.5 * t3 + 2 * t2 + 0.5 * t;
+			var c3 = 0.5 * t3 - 0.5 * t2;
+
+			spline.push({
+				x: 0.5 * (p0[0] * c0 + p1[0] * c1 + p2[0] * c2 + p3[0] * c3),
+				y: 0.5 * (p0[1] * c0 + p1[1] * c1 + p2[1] * c2 + p3[1] * c3)
+			});
+		}
+
+		return spline;
+	}
+
 	#euclideanDistance(point1, point2) {
 		var deltaX = point2.x - point1.x;
 		var deltaY = point2.y - point1.y;
